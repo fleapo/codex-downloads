@@ -1,6 +1,6 @@
 /**
  * store.rg-adguard.net 抓取 & HTML 解析。
- * 纯 fetch 实现,可在 Cloudflare Workers / Pages Functions 中运行。
+ * 纯 fetch 实现,运行在 Cloudflare Worker 中。
  */
 
 const RG_ADGUARD_ENDPOINT = "https://store.rg-adguard.net/api/GetFiles";
@@ -152,7 +152,7 @@ function inferVersion(fileName: string): string {
 const KV_KEY_SNAPSHOT = "snapshot";
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 固定 10 分钟
 
-/** Cloudflare 里的 KV 类型(避免依赖 workers-types 时也能编译) */
+/** 仅声明实际用到的 KV 方法，便于复用与测试。 */
 export interface KVLike {
   get(key: string): Promise<string | null>;
   put(
@@ -218,4 +218,3 @@ export async function refreshAndPersist(
   await writeSnapshot(kv, snap);
   return snap;
 }
-

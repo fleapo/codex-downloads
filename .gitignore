@@ -5,6 +5,7 @@ node_modules
 # build
 web/dist
 dist
+.wrangler/
 
 # logs / OS
 *.log

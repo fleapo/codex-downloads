@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "codex-downloads",
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2026-08-19",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Cloudflare 每 10 分钟触发 scheduled 处理器一次。
+  "triggers": {
+    "crons": ["*/10 * * * *"]
+  },
+
+  // 省略 id 后，首次部署会由 Wrangler 自动创建并绑定 KV。
+  "kv_namespaces": [
+    {
+      "binding": "CODEX_LINKS"
+    }
+  ],
+
+  // Vite 构建产物、API 与定时任务由同一个 Worker 提供。
+  "assets": {
+    "directory": "./web/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": true
+}

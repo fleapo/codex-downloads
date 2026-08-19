@@ -1,182 +1,174 @@
 # Codex for Windows — 下载页
 
-一个提供 Codex(OpenAI)Windows 版 `.msix` 安装包下载链接的极简站点。
-后台定时从 [store.rg-adguard.net](https://store.rg-adguard.net/) 抓取最新的 x64 / arm64
-镜像地址,写入 KV;前端页面直接读 KV 返回的快照渲染。
+一个提供 Codex（OpenAI）Windows 版 `.msix` 安装包下载链接的极简站点。
 
-- **前端**:Vite + React,深色极简风,细节动效丰富(极光背景、渐变标题、卡片悬停光晕、按钮 shimmer、复制反馈等)
-- **后端**:Cloudflare Pages Functions(`/api/*`)
-- **定时任务**:独立的 Cloudflare Cron Worker,每 10 分钟抓一次
-- **缓存**:Cloudflare Workers KV,Pages Functions 和 Cron Worker 共用同一个 namespace
+项目部署为**单个 Cloudflare Worker**：React 静态页面、`/api/*`、每 10 分钟执行一次的
+Cron Trigger 和 KV 绑定都由同一份 `wrangler.jsonc` 管理。Cloudflare 首次部署时自动创建
+KV，不需要在 GitHub 修改 KV ID，也不需要配置 `CLOUDFLARE_API_TOKEN` 或
+`CLOUDFLARE_ACCOUNT_ID`。
+
+## 架构
+
+```text
+                         每 10 分钟
+Cloudflare Cron Trigger ───────────┐
+                                  ▼
+浏览器 ──► Worker Static Assets + API ──► 抓取 rg-adguard ──► KV
+              │                         ▲                 │
+              └──── GET /api/links ─────┴──── 读取快照 ───┘
+```
+
+- `fetch` 处理器负责 `/api/links` 和 `/api/links/refresh`
+- `scheduled` 处理器由 `*/10 * * * *` 触发，即每 10 分钟更新一次 URL
+- KV key 为 `snapshot`
+- 首次访问时如果 KV 还没有数据，`GET /api/links` 会立即抓取一次作为冷启动兜底
+- 抓取失败时保留上一次成功数据，并把错误写入快照
+
+将定时任务和网页合并到同一个 Worker **不会影响每 10 分钟更新**。HTTP 请求与 Cron
+Trigger 是两个独立入口，只是共享同一份代码和 KV 绑定。
 
 ## 目录结构
 
-```
+```text
 codex-downloads/
-├── web/                        # Vite + React 前端
-│   ├── src/App.tsx
-│   ├── vite.config.ts
-│   └── package.json
-├── functions/                  # Cloudflare Pages Functions
-│   ├── _lib/rg-adguard.ts      # 抓取 & HTML 解析 & KV 读写(fetch 版)
-│   └── api/
-│       ├── links.ts            # GET  /api/links          读 KV,冷启动兜底
-│       └── links/refresh.ts    # POST /api/links/refresh  强制刷新
-├── worker-cron/                # 独立的 Cron Worker
-│   ├── src/index.ts            # scheduled handler:抓 + 写 KV
-│   └── wrangler.toml           # cron 表达式与 KV 绑定
-├── .github/workflows/          # GitHub Actions:自动部署 Cron Worker
-└── .gitignore
+├── web/                         # Vite + React 前端
+├── worker/
+│   ├── src/index.ts             # fetch + scheduled 处理器
+│   ├── src/rg-adguard.ts        # 抓取、解析和 KV 快照逻辑
+│   └── tsconfig.json
+├── wrangler.jsonc               # 静态资源、Cron、KV 与可观测性配置
+├── worker-configuration.d.ts    # Wrangler 根据配置生成的 Env 类型
+├── package.json
+└── package-lock.json
 ```
 
-## 数据流
+## 部署到 Cloudflare
 
-```
-        每 10 分钟                        读取
-Cron Worker ─────► 抓 rg-adguard ─► KV ────► Pages Function ─► 前端
-                                    ▲
-                                    │ POST /api/links/refresh
-                                    │ (前端刷新按钮)
-```
+### 1. 推送到 GitHub
 
-- 快照 JSON 存在 KV key `snapshot` 下
-- 首次上线 KV 里没数据时,`GET /api/links` 会兜底抓一次
+把仓库推送到 GitHub 的 `main` 分支。仓库中不需要填写 Cloudflare Account ID、API Token
+或 KV Namespace ID。
 
----
+### 2. 创建 Worker 并连接仓库
 
-# 部署到 Cloudflare
+1. 打开 Cloudflare Dashboard → **Workers & Pages**。
+2. 选择 **Create application / Create Worker**，然后选择从 Git 仓库导入。
+3. 授权 GitHub 并选择此仓库。
+4. 使用以下构建设置：
 
-**全程网页操作**,不需要装任何 CLI,只用浏览器 + `git push`。
-
-## 前置准备
-
-- 注册 [Cloudflare 账号](https://dash.cloudflare.com/sign-up)(免费即可)
-- 一个 GitHub 账号 + 新仓库
-
-## Step 1 — 推到 GitHub
-
-```bash
-cd codex-downloads
-git init
-git add .
-git commit -m "init: codex downloads on cloudflare"
-git remote add origin git@github.com:<你的用户名>/codex-downloads.git
-git branch -M main
-git push -u origin main
-```
-
-## Step 2 — 创建 KV Namespace
-
-Cloudflare Dashboard → **Storage & Databases → KV → Create instance** → 名字填 `CODEX_LINKS` → **Add**。
-
-创建后列表里能看到它的 ID(一串 32 位十六进制字符),点复制备用。
-
-## Step 3 — 部署 Pages(前端 + `/api/*`)
-
-### 3.1 创建 Pages 项目
-
-1. Dashboard → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
-2. 选择刚 push 的 `codex-downloads` 仓库
-3. **Build settings:**
-   - Framework preset:**None**
-   - Build command:`cd web && npm install && npm run build`
-   - Build output directory:`web/dist`
-   - Root directory:留空
-4. 点 **Save and Deploy**,等首次部署完成(约 1-2 分钟)
-
-### 3.2 绑定 KV 到 Pages
-
-1. 进入 Pages 项目 → **Settings** → **Bindings** → **KV namespace bindings** → **Add binding**
-2. Variable name:`CODEX_LINKS`
-3. KV namespace:选 Step 2 创建的那个
-4. **Save**,然后回到 **Deployments** → 点最新一次的 **Retry deployment** 让绑定生效
-
-部署完成后会拿到一个域名,例如 `https://codex-downloads.pages.dev`。此时前端已可访问,`/api/links` 也可用(首次访问会兜底抓一次)。
-
-## Step 4 — 部署 Cron Worker(GitHub Actions 自动)
-
-> **说明**:Cron Worker 是一段常驻在 **Cloudflare 机房**的代码,由 Cloudflare 调度器每 10 分钟
-> 触发一次。它跟 Pages 不同:Cloudflare **默认不会**从 GitHub 拉 Worker 代码,所以我们用
-> GitHub Actions 帮忙推。配置完之后 push 就自动更新,不需要本地操作。
-
-### 4.1 填入 KV id
-
-在 GitHub 网页版编辑器里打开 `worker-cron/wrangler.toml`(或本地 clone 后编辑),
-把 `REPLACE_WITH_KV_NAMESPACE_ID` 换成 Step 2 复制的 ID:
-
-```toml
-[[kv_namespaces]]
-binding = "CODEX_LINKS"
-id = "abc123def456..."       # ← 粘贴这里
-```
-
-保存并提交。
-
-### 4.2 拿到 Cloudflare 的 API Token 和 Account ID
-
-**Account ID**:
-- Cloudflare Dashboard 主页右侧栏,或任意 Workers 详情页 URL 里能看到,格式如 `1a2b3c4d...`(32 位)
-
-**API Token**:
-1. Dashboard → 点右上头像 → **My Profile** → **API Tokens** → **Create Token**
-2. 选 **Edit Cloudflare Workers** 模板(已包含所需权限)
-3. Zone / Account Resources 保持默认(All zones / All accounts)
-4. 点 **Continue to summary** → **Create Token**
-5. **立刻复制 token**(只显示一次,关闭页面就没了)
-
-### 4.3 在 GitHub 仓库里加两个 Secret
-
-GitHub 仓库 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**,分别添加:
-
-| Name | Value |
+| 配置项 | 值 |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | 上一步复制的 token |
-| `CLOUDFLARE_ACCOUNT_ID` | Account ID |
+| Production branch | `main` |
+| Root directory | 留空 |
+| Build command | `npm run build` |
+| Deploy command | `npx wrangler deploy` |
 
-### 4.4 触发首次部署
+Workers Builds 会自动创建部署所需的 Cloudflare API Token；不需要把 Token 保存到 GitHub
+Secrets。
 
-`.github/workflows/deploy-cron.yml` 已经在仓库里,触发条件:
-- **push 到 main 且 `worker-cron/**` 或 `functions/_lib/**` 有改动**(自动)
-- 或 GitHub → **Actions** tab → 选 **Deploy Cron Worker** → 点 **Run workflow**(手动)
+### 3. 首次部署
 
-首次可以直接手动 **Run workflow**,或者:
+点击 **Save and Deploy**。首次部署时，Wrangler 会根据下面的声明自动创建并绑定 KV：
 
-```bash
-git commit --allow-empty -m "trigger: first cron worker deploy"
-git push
+```jsonc
+"kv_namespaces": [
+  { "binding": "CODEX_LINKS" }
+]
 ```
 
-GitHub Actions 面板里能看到实时日志,通常 30 秒到 1 分钟完成。成功后 Cloudflare Dashboard → **Workers & Pages** 会出现 `codex-downloads-cron`。
+`id` 被有意省略。通过 Cloudflare 的 Git 构建部署时，生成的 KV ID 保存在 Cloudflare
+账号中，不会要求回写 GitHub 仓库。Cloudflare 当前将自动资源创建标记为 Beta；项目已锁定
+验证过的 Wrangler 版本，避免构建环境自动漂移。
 
-## Step 5 — 验证
+部署完成后，同一个 Worker 会同时获得：
 
-1. 浏览器打开 `https://codex-downloads.pages.dev`,应能看到 x64 / arm64 下载卡
-2. 直接测 API:
-   ```bash
-   curl https://codex-downloads.pages.dev/api/links | jq .
-   curl -X POST https://codex-downloads.pages.dev/api/links/refresh | jq .
-   ```
-3. Dashboard → **Workers & Pages → codex-downloads-cron → Logs** 可看到每 10 分钟的 scheduled 调用记录
+- `workers.dev` 访问地址
+- React 静态页面
+- `/api/links` 与 `/api/links/refresh`
+- `CODEX_LINKS` KV binding
+- `*/10 * * * *` Cron Trigger
 
----
+以后只需 push 到 `main`，Cloudflare 会自动构建和部署，不再需要修改其他配置。
 
-# 后续维护
+## 验证部署
 
-- **更新前端 / API 代码**:`git push` 到 main → Pages **自动**重新部署
-- **更新 Cron Worker 代码**:`git push` 到 main(且改到了 `worker-cron/**` 或 `functions/_lib/**`)→ GitHub Actions **自动**重新部署
-- **查看 KV**:Cloudflare Dashboard → **Storage & Databases → KV → CODEX_LINKS**,可以浏览、编辑、删除 key
-- **看日志**:
-  - Pages Function 错误:Dashboard → Pages 项目 → **Functions** → **Real-time logs**
-  - Cron Worker 日志:Dashboard → Workers & Pages → `codex-downloads-cron` → **Logs** / **Real-time Logs**
+假设 Worker 地址为 `https://codex-downloads.<你的子域>.workers.dev`：
 
----
+```bash
+curl https://codex-downloads.<你的子域>.workers.dev/api/links
+curl -X POST https://codex-downloads.<你的子域>.workers.dev/api/links/refresh
+```
 
-# 免费额度说明
+还可以在 Dashboard 中确认：
 
-| 服务 | 免费额度 | 本项目用量 |
-| --- | --- | --- |
-| Cloudflare Pages | 500 次 build/月,无限带宽 | 每次 push 一次 build |
-| Workers(含 cron) | 100k 请求/天 | 144/天(cron)+ 用户访问 |
-| Workers KV | 100k 读/天,1000 写/天 | 144 写/天 + 每次前端访问 1 读 |
+1. Worker → **Settings → Bindings** 中存在 `CODEX_LINKS`
+2. Worker → **Settings → Triggers** 中存在 `*/10 * * * *`
+3. Worker → **Logs** 中每 10 分钟出现 `scheduled refresh completed`
 
-免费额度足够长期运行。
+Cron 配置更新可能需要短暂时间传播。即使第一次 Cron 尚未执行，首次 API 请求也会自动
+填充 KV。
+
+## 从旧版 Pages + Cron Worker 迁移
+
+旧版部署使用一个 Pages 项目和一个 `codex-downloads-cron` Worker。建议按以下顺序迁移：
+
+1. 先部署并验证新的单 Worker。
+2. 如果使用自定义域名，把域名切换到新 Worker。
+3. 确认新 Worker 的 API、KV 和 Cron Trigger 正常。
+4. 在 Cloudflare Dashboard 停用或删除旧的 `codex-downloads-cron` Worker。
+5. 不再需要旧 Pages 项目后再将其删除。
+
+新的 KV 会在首次访问或首次 Cron 执行时自动生成快照，因此无需迁移旧 KV 中的临时下载
+链接。停用旧 Cron 是为了避免旧任务继续产生重复抓取和写入。
+
+## 本地开发
+
+安装依赖并生成绑定类型：
+
+```bash
+npm ci
+npm run types
+```
+
+构建并启动本地 Worker（端口 `8788`）：
+
+```bash
+npm run dev
+```
+
+测试 API 和定时任务：
+
+```bash
+curl http://127.0.0.1:8788/api/links
+curl "http://127.0.0.1:8788/cdn-cgi/handler/scheduled?cron=*/10+*+*+*+*"
+```
+
+需要前端热更新时，保持 Worker 运行，并在另一个终端启动 Vite：
+
+```bash
+npm run dev --workspace web
+```
+
+Vite 在 `3000` 端口运行，并把 `/api/*` 代理到本地 Worker 的 `8788` 端口。
+
+提交前检查：
+
+```bash
+npm run check
+npx wrangler deploy --dry-run
+```
+
+## 后续调整
+
+- 修改刷新频率：同时修改 `wrangler.jsonc` 的 Cron 表达式，以及
+  `worker/src/rg-adguard.ts` 中用于前端展示的刷新间隔。
+- 查看 KV：Worker → **Settings → Bindings**，打开自动创建的 KV Namespace。
+- 查看定时任务：Worker → **Settings → Triggers**。
+- 查看抓取日志：Worker → **Logs**。
+
+Cloudflare 文档：
+
+- [Wrangler 自动创建资源](https://developers.cloudflare.com/workers/wrangler/configuration/#automatic-provisioning)
+- [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)
+- [Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)
+- [Workers Builds 配置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)

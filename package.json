@@ -1,0 +1,22 @@
+{
+  "name": "codex-downloads",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace web",
+    "check": "npm run check:worker && npm run build",
+    "check:worker": "tsc -p worker/tsconfig.json",
+    "deploy": "npm run build && wrangler deploy",
+    "dev": "npm run build && wrangler dev --port 8788",
+    "types": "wrangler types --include-runtime false"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260819.1",
+    "typescript": "^7.0.2",
+    "wrangler": "4.124.0"
+  }
+}
