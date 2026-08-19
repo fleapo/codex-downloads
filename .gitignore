@@ -1,0 +1,19 @@
+# deps
+node_modules
+.npm
+
+# build
+web/dist
+.wrangler
+.dev.vars
+dist
+
+# logs / OS
+*.log
+.DS_Store
+.vscode/
+
+# 敏感文件(如需本地测试)
+.env
+.env.*
+!.env.example

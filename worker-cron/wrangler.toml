@@ -1,0 +1,13 @@
+name = "codex-downloads-cron"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# 每分钟触发一次;是否真正执行抓取由 KV 里的 nextRefreshAt 决定
+[triggers]
+crons = ["* * * * *"]
+
+# 与 Pages 项目使用同一个 KV namespace。
+# 部署前需要把下面的 id 替换成 `wrangler kv namespace create CODEX_LINKS` 输出的值。
+[[kv_namespaces]]
+binding = "CODEX_LINKS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
