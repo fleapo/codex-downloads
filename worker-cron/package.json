@@ -3,15 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "tail": "wrangler tail",
-    "trigger": "wrangler dev --test-scheduled"
-  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250101.0",
-    "typescript": "~5.4.5",
-    "wrangler": "^3.90.0"
+    "typescript": "~5.4.5"
   }
 }

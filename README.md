@@ -15,7 +15,7 @@
 codex-downloads/
 ├── web/                        # Vite + React 前端
 │   ├── src/App.tsx
-│   ├── vite.config.ts          # /api 代理到 wrangler pages dev (8788)
+│   ├── vite.config.ts
 │   └── package.json
 ├── functions/                  # Cloudflare Pages Functions
 │   ├── _lib/rg-adguard.ts      # 抓取 & HTML 解析 & KV 读写(fetch 版)
@@ -24,7 +24,8 @@ codex-downloads/
 │       └── links/refresh.ts    # POST /api/links/refresh  强制刷新
 ├── worker-cron/                # 独立的 Cron Worker
 │   ├── src/index.ts            # scheduled handler:抓 + 写 KV
-│   └── wrangler.toml           # cron: */10 * * * *
+│   └── wrangler.toml           # cron 表达式与 KV 绑定
+├── .github/workflows/          # GitHub Actions:自动部署 Cron Worker
 └── .gitignore
 ```
 
@@ -35,7 +36,7 @@ codex-downloads/
 Cron Worker ─────► 抓 rg-adguard ─► KV ────► Pages Function ─► 前端
                                     ▲
                                     │ POST /api/links/refresh
-                                    │ (前端刷新按钮 / 手动 curl)
+                                    │ (前端刷新按钮)
 ```
 
 - 快照 JSON 存在 KV key `snapshot` 下
@@ -45,14 +46,12 @@ Cron Worker ─────► 抓 rg-adguard ─► KV ────► Pages Fu
 
 # 部署到 Cloudflare
 
+**全程网页操作**,不需要装任何 CLI,只用浏览器 + `git push`。
+
 ## 前置准备
 
-1. 注册 [Cloudflare 账号](https://dash.cloudflare.com/sign-up)(免费即可)
-2. 本地安装 wrangler CLI 并登录:
-   ```bash
-   npm i -g wrangler
-   wrangler login    # 浏览器完成 OAuth
-   ```
+- 注册 [Cloudflare 账号](https://dash.cloudflare.com/sign-up)(免费即可)
+- 一个 GitHub 账号 + 新仓库
 
 ## Step 1 — 推到 GitHub
 
@@ -66,25 +65,15 @@ git branch -M main
 git push -u origin main
 ```
 
-## Step 2 — 创建 KV Namespace(Pages 和 Cron Worker 共用)
+## Step 2 — 创建 KV Namespace
 
-```bash
-wrangler kv namespace create CODEX_LINKS
-```
+Cloudflare Dashboard → **Storage & Databases → KV → Create instance** → 名字填 `CODEX_LINKS` → **Add**。
 
-输出示例:
-
-```
-🌀 Creating namespace with title "codex-downloads-CODEX_LINKS"
-✨ Success!
-[[kv_namespaces]]
-binding = "CODEX_LINKS"
-id = "abc123def456..."     ← 记下这个 id
-```
+创建后列表里能看到它的 ID(一串 32 位十六进制字符),点复制备用。
 
 ## Step 3 — 部署 Pages(前端 + `/api/*`)
 
-### 3.1 在 Cloudflare Dashboard 创建 Pages 项目
+### 3.1 创建 Pages 项目
 
 1. Dashboard → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
 2. 选择刚 push 的 `codex-downloads` 仓库
@@ -104,11 +93,16 @@ id = "abc123def456..."     ← 记下这个 id
 
 部署完成后会拿到一个域名,例如 `https://codex-downloads.pages.dev`。此时前端已可访问,`/api/links` 也可用(首次访问会兜底抓一次)。
 
-## Step 4 — 部署 Cron Worker
+## Step 4 — 部署 Cron Worker(GitHub Actions 自动)
+
+> **说明**:Cron Worker 是一段常驻在 **Cloudflare 机房**的代码,由 Cloudflare 调度器每 10 分钟
+> 触发一次。它跟 Pages 不同:Cloudflare **默认不会**从 GitHub 拉 Worker 代码,所以我们用
+> GitHub Actions 帮忙推。配置完之后 push 就自动更新,不需要本地操作。
 
 ### 4.1 填入 KV id
 
-编辑 `worker-cron/wrangler.toml`,把 `REPLACE_WITH_KV_NAMESPACE_ID` 换成 Step 2 输出的 id:
+在 GitHub 网页版编辑器里打开 `worker-cron/wrangler.toml`(或本地 clone 后编辑),
+把 `REPLACE_WITH_KV_NAMESPACE_ID` 换成 Step 2 复制的 ID:
 
 ```toml
 [[kv_namespaces]]
@@ -116,30 +110,43 @@ binding = "CODEX_LINKS"
 id = "abc123def456..."       # ← 粘贴这里
 ```
 
-### 4.2 部署
+保存并提交。
+
+### 4.2 拿到 Cloudflare 的 API Token 和 Account ID
+
+**Account ID**:
+- Cloudflare Dashboard 主页右侧栏,或任意 Workers 详情页 URL 里能看到,格式如 `1a2b3c4d...`(32 位)
+
+**API Token**:
+1. Dashboard → 点右上头像 → **My Profile** → **API Tokens** → **Create Token**
+2. 选 **Edit Cloudflare Workers** 模板(已包含所需权限)
+3. Zone / Account Resources 保持默认(All zones / All accounts)
+4. 点 **Continue to summary** → **Create Token**
+5. **立刻复制 token**(只显示一次,关闭页面就没了)
+
+### 4.3 在 GitHub 仓库里加两个 Secret
+
+GitHub 仓库 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**,分别添加:
+
+| Name | Value |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | 上一步复制的 token |
+| `CLOUDFLARE_ACCOUNT_ID` | Account ID |
+
+### 4.4 触发首次部署
+
+`.github/workflows/deploy-cron.yml` 已经在仓库里,触发条件:
+- **push 到 main 且 `worker-cron/**` 或 `functions/_lib/**` 有改动**(自动)
+- 或 GitHub → **Actions** tab → 选 **Deploy Cron Worker** → 点 **Run workflow**(手动)
+
+首次可以直接手动 **Run workflow**,或者:
 
 ```bash
-cd worker-cron
-npm install
-npx wrangler deploy
+git commit --allow-empty -m "trigger: first cron worker deploy"
+git push
 ```
 
-成功输出会显示 cron trigger 已注册:
-
-```
-Uploaded codex-downloads-cron (1.24 sec)
-Deployed codex-downloads-cron triggers (0.87 sec)
-  schedule: */10 * * * *
-```
-
-### 4.3(可选)手动触发一次验证
-
-```bash
-# worker 的 workers.dev 域名可以在 dashboard 的 worker 详情里找到
-curl -X POST https://codex-downloads-cron.<你的账号>.workers.dev/tick
-```
-
-返回值就是最新的 snapshot JSON。
+GitHub Actions 面板里能看到实时日志,通常 30 秒到 1 分钟完成。成功后 Cloudflare Dashboard → **Workers & Pages** 会出现 `codex-downloads-cron`。
 
 ## Step 5 — 验证
 
@@ -149,50 +156,18 @@ curl -X POST https://codex-downloads-cron.<你的账号>.workers.dev/tick
    curl https://codex-downloads.pages.dev/api/links | jq .
    curl -X POST https://codex-downloads.pages.dev/api/links/refresh | jq .
    ```
-3. Dashboard → **Workers & Pages → codex-downloads-cron → Logs** 可看到每 10 分钟的 scheduled 调用
-
----
-
-# 本地开发
-
-需要先本地全局装一个 wrangler:
-
-```bash
-npm i -g wrangler
-```
-
-装好后:
-
-```bash
-# 前端依赖
-cd web && npm install && cd ..
-
-# 终端 1:wrangler pages dev,提供 /api/* + 本地 KV(先 build 一次前端)
-cd web && npm run build && cd ..
-npx wrangler pages dev web/dist \
-  --compatibility-date=2025-01-01 \
-  --kv CODEX_LINKS \
-  --port 8788
-
-# 终端 2:启动 Vite 前端(自动把 /api 代理到 8788)
-cd web && npm run dev
-
-# (可选)终端 3:本地跑 cron worker
-cd worker-cron && npm install && npm run dev
-```
-
-浏览器打开 <http://127.0.0.1:3000/> 即可。
+3. Dashboard → **Workers & Pages → codex-downloads-cron → Logs** 可看到每 10 分钟的 scheduled 调用记录
 
 ---
 
 # 后续维护
 
-- **更新前端 / API 代码**:`git push` 到 main → Pages 自动重新部署
-- **更新 Cron Worker 代码**:`cd worker-cron && npx wrangler deploy`
-- **查看 KV**:`wrangler kv key list --binding=CODEX_LINKS --remote`,或 dashboard 的 KV 页面
+- **更新前端 / API 代码**:`git push` 到 main → Pages **自动**重新部署
+- **更新 Cron Worker 代码**:`git push` 到 main(且改到了 `worker-cron/**` 或 `functions/_lib/**`)→ GitHub Actions **自动**重新部署
+- **查看 KV**:Cloudflare Dashboard → **Storage & Databases → KV → CODEX_LINKS**,可以浏览、编辑、删除 key
 - **看日志**:
-  - Pages Function 报错:dashboard → Pages 项目 → **Functions**
-  - Cron Worker 日志:`npx wrangler tail codex-downloads-cron`
+  - Pages Function 错误:Dashboard → Pages 项目 → **Functions** → **Real-time logs**
+  - Cron Worker 日志:Dashboard → Workers & Pages → `codex-downloads-cron` → **Logs** / **Real-time Logs**
 
 ---
 
