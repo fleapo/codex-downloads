@@ -149,33 +149,6 @@
   letter-spacing: 0.02em;
 }
 
-/* ==================== Status Pill ==================== */
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(8px);
-  color: var(--text-muted);
-  font-size: 12.5px;
-  letter-spacing: 0.01em;
-  transition:
-    border-color 0.25s ease,
-    background 0.25s ease,
-    color 0.25s ease;
-}
-.status-pill:hover {
-  border-color: var(--border-strong);
-}
-
-.status-label {
-  color: var(--text);
-  font-weight: 500;
-}
-
 /* ==================== Cards ==================== */
 
 .cards {
@@ -363,12 +336,6 @@
 .action-row-source {
   padding-top: 2px;
 }
-.source-warning {
-  color: rgba(251, 191, 36, 0.72);
-  font-size: 11.5px;
-  line-height: 1.4;
-  text-align: center;
-}
 
 /* ==================== Buttons ==================== */
 
@@ -477,6 +444,59 @@
   background: rgba(52, 211, 153, 0.08);
 }
 
+/* ==================== Link Notice ==================== */
+
+.link-notice {
+  display: grid;
+  gap: 11px;
+  padding: 17px 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    rgba(165, 180, 252, 0.045),
+    rgba(52, 211, 153, 0.025)
+  );
+  backdrop-filter: blur(10px);
+  animation: fade-up 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.25s both;
+}
+.notice-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: start;
+  gap: 11px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.notice-row p {
+  margin: 0;
+}
+.notice-row strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.notice-row code {
+  color: var(--text);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.92em;
+}
+.notice-mark {
+  width: 7px;
+  height: 7px;
+  margin-top: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 12px currentColor;
+}
+.notice-row-source .notice-mark {
+  color: #fbbf24;
+  background: currentColor;
+}
+.notice-row-safe .notice-mark {
+  color: var(--accent-b);
+  background: currentColor;
+}
+
 /* ==================== Error / Empty ==================== */
 
 .error-banner {
@@ -569,6 +589,10 @@
   border-radius: 50%;
   opacity: 0.6;
 }
+.footer-sync-time {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ==================== Animations ==================== */
 
@@ -612,8 +636,8 @@
   .action-row {
     grid-template-columns: 1fr;
   }
-  .status-pill {
-    flex-wrap: wrap;
+  .link-notice {
+    padding: 15px 16px;
   }
   .footer {
     flex-direction: column;

@@ -160,10 +160,6 @@ function Header() {
   );
 }
 
-interface StatusPillProps {
-  snap: LinksSnapshot | null;
-}
-
 function fmtClock(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -206,27 +202,9 @@ function fmtLocalDateTime(value: string): string {
   }).format(date);
 }
 
-function StatusPill({ snap }: StatusPillProps) {
-  const clock = fmtClock(snap?.lastSuccessAt ?? null);
-
-  return (
-    <div className="status-pill">
-      <span className="status-label">上次同步时间:{clock}</span>
-    </div>
-  );
-}
-
-function Hero({
-  version,
-  snap,
-}: {
-  version: string;
-  snap: LinksSnapshot | null;
-}) {
+function Hero({ version }: { version: string }) {
   return (
     <section className="hero">
-      <StatusPill snap={snap} />
-
       <h1 className="hero-title">
         Codex <span className="accent">桌面版</span>
         <br />
@@ -320,7 +298,7 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
             onClick={() => onDownload('mirror')}
           >
             <DownloadIcon />
-            <span>R2 安全下载</span>
+            <span>安全下载</span>
           </button>
           <button
             className={`btn btn-ghost${copied === 'mirror' ? ' btn-copied' : ''}`}
@@ -328,7 +306,7 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
             onClick={() => void onCopy('mirror')}
           >
             <CopyIcon copied={copied === 'mirror'} />
-            <span>{copied === 'mirror' ? '已复制' : '复制 R2 链接'}</span>
+            <span>{copied === 'mirror' ? '已复制' : '复制安全链接'}</span>
           </button>
         </div>
 
@@ -351,9 +329,29 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
             <span>{copied === 'source' ? '已复制' : '复制原始链接'}</span>
           </button>
         </div>
-        <div className="source-warning">原始 HTTP 链接可能被浏览器标记为不安全</div>
       </div>
     </article>
+  );
+}
+
+function LinkNotice() {
+  return (
+    <section className="link-notice" aria-label="下载链接说明">
+      <div className="notice-row notice-row-source">
+        <span className="notice-mark" aria-hidden />
+        <p>
+          <strong>原始链接：</strong>直接取自 <code>store.rg-adguard.net</code>
+          的 Windows 应用商店镜像，但其链接为 <code>HTTP</code>，下载时可能被浏览器提示不安全
+        </p>
+      </div>
+      <div className="notice-row notice-row-safe">
+        <span className="notice-mark" aria-hidden />
+        <p>
+          <strong>安全链接：</strong>由本站缓存的安装文件链接，来源仍是原始链接，但以 <code>HTTPS</code>
+          形式提供。
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -453,6 +451,8 @@ function ErrorBanner({ message }: { message: string }) {
 }
 
 function Footer({ snap }: { snap: LinksSnapshot | null }) {
+  const clock = fmtClock(snap?.lastSuccessAt ?? null);
+
   return (
     <footer className="footer">
       <span>
@@ -466,7 +466,9 @@ function Footer({ snap }: { snap: LinksSnapshot | null }) {
         </a>
       </span>
       <span className="dot" aria-hidden />
-      <span>Cloudflare R2 镜像 · 每 10 分钟自动同步</span>
+      <span>每 10 分钟自动同步</span>
+      <span className="dot" aria-hidden />
+      <span className="footer-sync-time">上次同步时间:{clock}</span>
     </footer>
   );
 }
@@ -488,7 +490,7 @@ function App() {
     <div className="app">
       <Header />
       <main className="main">
-        <Hero version={version} snap={snap} />
+        <Hero version={version} />
 
         {softError && snap?.lastError && (
           <ErrorBanner message={snap.lastError} />
@@ -506,6 +508,8 @@ function App() {
             loading={loading && !snap?.data}
           />
         </section>
+
+        <LinkNotice />
 
         {hasError && (
           <div className="empty-state">
