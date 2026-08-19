@@ -150,8 +150,7 @@ function inferVersion(fileName: string): string {
 /* ==================== KV 交互 ==================== */
 
 const KV_KEY_SNAPSHOT = "snapshot";
-const BASE_INTERVAL_MS = 10 * 60 * 1000; // 10 分钟
-const JITTER_MAX_MS = 60 * 1000; // 0-60 秒
+const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 固定 10 分钟
 
 /** Cloudflare 里的 KV 类型(避免依赖 workers-types 时也能编译) */
 export interface KVLike {
@@ -182,10 +181,9 @@ export async function writeSnapshot(
   await kv.put(KV_KEY_SNAPSHOT, JSON.stringify(snap));
 }
 
-/** 决定下次抓取时间(10min + 0-60s 抖动) */
+/** 下次抓取时间(固定 10 分钟后) */
 export function computeNextRefreshAt(now = Date.now()): string {
-  const jitter = Math.floor(Math.random() * (JITTER_MAX_MS + 1));
-  return new Date(now + BASE_INTERVAL_MS + jitter).toISOString();
+  return new Date(now + REFRESH_INTERVAL_MS).toISOString();
 }
 
 /** 执行一次抓取,合并到旧快照(失败时保留旧数据),写回 KV,返回最新快照 */
@@ -221,10 +219,3 @@ export async function refreshAndPersist(
   return snap;
 }
 
-/** 判断当前时间是否已到 snapshot.nextRefreshAt */
-export function isDue(snap: LinksSnapshot | null, now = Date.now()): boolean {
-  if (!snap || !snap.nextRefreshAt) return true;
-  const next = new Date(snap.nextRefreshAt).getTime();
-  if (!Number.isFinite(next)) return true;
-  return now >= next;
-}

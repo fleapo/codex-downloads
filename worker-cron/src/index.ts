@@ -1,13 +1,8 @@
 /**
- * Cron Worker: 每分钟触发,检查是否达到 snapshot.nextRefreshAt,
- * 到期后抓取一次 rg-adguard 并写回 KV。
+ * Cron Worker: cron 表达式设置为每 10 分钟触发一次,直接抓取写 KV。
  * KV namespace 与 Pages Functions 共用 (CODEX_LINKS)。
  */
-import {
-  isDue,
-  readSnapshot,
-  refreshAndPersist,
-} from "../../functions/_lib/rg-adguard";
+import { refreshAndPersist } from "../../functions/_lib/rg-adguard";
 
 export interface Env {
   CODEX_LINKS: KVNamespace;
@@ -19,7 +14,7 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<void> {
-    ctx.waitUntil(tick(env));
+    ctx.waitUntil(refreshAndPersist(env.CODEX_LINKS));
   },
 
   /**
@@ -37,9 +32,3 @@ export default {
     return new Response("codex-cron worker up", { status: 200 });
   },
 };
-
-async function tick(env: Env): Promise<void> {
-  const snap = await readSnapshot(env.CODEX_LINKS);
-  if (!isDue(snap)) return;
-  await refreshAndPersist(env.CODEX_LINKS, snap);
-}
