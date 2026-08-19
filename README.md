@@ -10,19 +10,22 @@ KV，不需要在 GitHub 修改 KV ID，也不需要配置 `CLOUDFLARE_API_TOKEN
 ## 架构
 
 ```text
-                         每 10 分钟
-Cloudflare Cron Trigger ───────────┐
-                                  ▼
-浏览器 ──► Worker Static Assets + API ──► 抓取 rg-adguard ──► KV
-              │                         ▲                 │
-              └──── GET /api/links ─────┴──── 读取快照 ───┘
+Cloudflare Cron Trigger（每 10 分钟）
+              │
+              ▼
+      Worker scheduled ──► 抓取 rg-adguard ──► 写入 KV
+
+浏览器 ──► Worker Static Assets
+  └─────► GET /api/links ──► 只读 KV 快照
 ```
 
-- `fetch` 处理器负责 `/api/links` 和 `/api/links/refresh`
+- `fetch` 处理器只通过 `GET /api/links` 读取 KV，不会触发抓取或写入
 - `scheduled` 处理器由 `*/10 * * * *` 触发，即每 10 分钟更新一次 URL
+- 项目不公开手动同步接口，也不会在首次访问时同步
 - KV key 为 `snapshot`
-- 首次访问时如果 KV 还没有数据，`GET /api/links` 会立即抓取一次作为冷启动兜底
+- 首次 Cron 尚未执行时，页面会提示等待定时同步
 - 抓取失败时保留上一次成功数据，并把错误写入快照
+- 下载链接的有效期由浏览器转换为访问者所在时区显示
 
 将定时任务和网页合并到同一个 Worker **不会影响每 10 分钟更新**。HTTP 请求与 Cron
 Trigger 是两个独立入口，只是共享同一份代码和 KV 绑定。
@@ -52,7 +55,8 @@ codex-downloads/
 ### 2. 创建 Worker 并连接仓库
 
 1. 打开 Cloudflare Dashboard → **Workers & Pages**。
-2. 选择 **Create application / Create Worker**，然后选择从 Git 仓库导入。
+2. 选择 **Create application → Import a repository → Get started**，不要进入 Pages 的
+   **Connect to Git** 流程。
 3. 授权 GitHub 并选择此仓库。
 4. 使用以下构建设置：
 
@@ -61,7 +65,7 @@ codex-downloads/
 | Production branch | `master` |
 | Root directory | 留空 |
 | Build command | `npm run build` |
-| Deploy command | `npx wrangler deploy` |
+| Deploy command | 如果页面显示该项，填写 `npx wrangler deploy`；未显示则使用默认值即可 |
 
 Workers Builds 会自动创建部署所需的 Cloudflare API Token；不需要把 Token 保存到 GitHub
 Secrets。
@@ -84,7 +88,7 @@ Secrets。
 
 - `workers.dev` 访问地址
 - React 静态页面
-- `/api/links` 与 `/api/links/refresh`
+- 只读的 `GET /api/links`
 - `CODEX_LINKS` KV binding
 - `*/10 * * * *` Cron Trigger
 
@@ -96,17 +100,18 @@ Secrets。
 
 ```bash
 curl https://codex-downloads.<你的子域>.workers.dev/api/links
-curl -X POST https://codex-downloads.<你的子域>.workers.dev/api/links/refresh
 ```
+
+`POST /api/links/refresh` 不存在；访问该路径会返回 `404`，不会触发同步。
 
 还可以在 Dashboard 中确认：
 
 1. Worker → **Settings → Bindings** 中存在 `CODEX_LINKS`
-2. Worker → **Settings → Triggers** 中存在 `*/10 * * * *`
-3. Worker → **Logs** 中每 10 分钟出现 `scheduled refresh completed`
+2. Worker → **Settings → Triggers → Cron Triggers** 中存在 `*/10 * * * *`
+3. Worker → **Observability** 中每 10 分钟出现 `scheduled refresh completed`
 
-Cron 配置更新可能需要短暂时间传播。即使第一次 Cron 尚未执行，首次 API 请求也会自动
-填充 KV。
+Cron 配置更新可能需要短暂时间传播。新 KV 在第一次 Cron 执行前没有快照，这是预期行为；
+HTTP 请求不会触发同步，请等待最多约 10 分钟后刷新页面。
 
 ## 从旧版 Pages + Cron Worker 迁移
 
@@ -118,8 +123,8 @@ Cron 配置更新可能需要短暂时间传播。即使第一次 Cron 尚未执
 4. 在 Cloudflare Dashboard 停用或删除旧的 `codex-downloads-cron` Worker。
 5. 不再需要旧 Pages 项目后再将其删除。
 
-新的 KV 会在首次访问或首次 Cron 执行时自动生成快照，因此无需迁移旧 KV 中的临时下载
-链接。停用旧 Cron 是为了避免旧任务继续产生重复抓取和写入。
+新的 KV 会在首次 Cron 执行时自动生成快照，因此无需迁移旧 KV 中的临时下载链接。停用
+旧 Cron 是为了避免旧任务继续产生重复抓取和写入。
 
 ## 本地开发
 
@@ -143,6 +148,8 @@ curl http://127.0.0.1:8788/api/links
 curl "http://127.0.0.1:8788/cdn-cgi/handler/scheduled?cron=*/10+*+*+*+*"
 ```
 
+第一个请求只读 KV；第二个请求模拟 Cron，也是本地环境中唯一会触发抓取和写入的入口。
+
 需要前端热更新时，保持 Worker 运行，并在另一个终端启动 Vite：
 
 ```bash
@@ -163,8 +170,8 @@ npx wrangler deploy --dry-run
 - 修改刷新频率：同时修改 `wrangler.jsonc` 的 Cron 表达式，以及
   `worker/src/rg-adguard.ts` 中用于前端展示的刷新间隔。
 - 查看 KV：Worker → **Settings → Bindings**，打开自动创建的 KV Namespace。
-- 查看定时任务：Worker → **Settings → Triggers**。
-- 查看抓取日志：Worker → **Logs**。
+- 查看定时任务：Worker → **Settings → Triggers → Cron Triggers**。
+- 查看抓取日志：Worker → **Observability**。
 
 Cloudflare 文档：
 

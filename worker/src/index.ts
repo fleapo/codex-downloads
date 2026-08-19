@@ -25,19 +25,16 @@ function methodNotAllowed(allowed: string): Response {
 }
 
 async function getLinks(env: Env): Promise<Response> {
-  let snapshot: LinksSnapshot | null = await readSnapshot(env.CODEX_LINKS);
+  const snapshot: LinksSnapshot =
+    (await readSnapshot(env.CODEX_LINKS)) ?? {
+      status: "error",
+      data: null,
+      lastError: "定时同步尚未生成下载链接，请等待下一次 Cron 执行后刷新页面。",
+      lastAttemptAt: null,
+      lastSuccessAt: null,
+      nextRefreshAt: null,
+    };
 
-  // 首次部署时 Cron 可能还未运行，直接抓取一次作为冷启动兜底。
-  if (!snapshot?.data) {
-    snapshot = await refreshAndPersist(env.CODEX_LINKS, snapshot);
-  }
-
-  return jsonResponse(snapshot);
-}
-
-async function refreshLinks(env: Env): Promise<Response> {
-  const previous = await readSnapshot(env.CODEX_LINKS);
-  const snapshot = await refreshAndPersist(env.CODEX_LINKS, previous);
   return jsonResponse(snapshot);
 }
 
@@ -48,12 +45,6 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     return request.method === "GET"
       ? getLinks(env)
       : methodNotAllowed("GET");
-  }
-
-  if (pathname === "/api/links/refresh") {
-    return request.method === "POST"
-      ? refreshLinks(env)
-      : methodNotAllowed("POST");
   }
 
   return jsonResponse({ error: "Not Found" }, 404);

@@ -154,8 +154,7 @@
 .status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 8px 7px 14px;
+  padding: 7px 14px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.03);
@@ -175,90 +174,6 @@
 .status-label {
   color: var(--text);
   font-weight: 500;
-}
-
-.status-sep {
-  color: var(--text-dim);
-}
-
-.status-meta {
-  font-variant-numeric: tabular-nums;
-}
-
-.status-dot {
-  position: relative;
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-}
-.status-dot-inner {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: var(--accent-b);
-}
-.status-dot::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  background: var(--accent-b);
-  opacity: 0.35;
-  animation: pulse 2.4s ease-in-out infinite;
-}
-
-.status-fetching .status-dot-inner,
-.status-fetching .status-dot::after {
-  background: var(--accent-a);
-}
-.status-error .status-dot-inner,
-.status-error .status-dot::after {
-  background: var(--danger);
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    transform: scale(0.9);
-    opacity: 0.35;
-  }
-  50% {
-    transform: scale(1.5);
-    opacity: 0;
-  }
-}
-
-.refresh-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-  transition:
-    color 0.25s ease,
-    background 0.25s ease,
-    transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.refresh-btn:hover:not(:disabled) {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.1);
-  transform: rotate(160deg);
-}
-.refresh-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.status-fetching .refresh-btn svg {
-  animation: spin 0.9s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 /* ==================== Cards ==================== */

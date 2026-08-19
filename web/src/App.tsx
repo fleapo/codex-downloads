@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import './App.css';
 
 /* ==================== 类型 ==================== */
@@ -21,7 +21,7 @@ interface CodexLinks {
 }
 
 interface LinksSnapshot {
-  status: 'idle' | 'fetching' | 'success' | 'error';
+  status: 'success' | 'error';
   data: CodexLinks | null;
   lastError: string | null;
   lastAttemptAt: string | null;
@@ -34,64 +34,40 @@ interface LinksSnapshot {
 function useLinks(): {
   snap: LinksSnapshot | null;
   loading: boolean;
-  refresh: () => Promise<void>;
 } {
   const [snap, setSnap] = useState<LinksSnapshot | null>(null);
-  const [loading, setLoading] = useState(false);
-  const inflight = useRef(false);
-
-  const load = useCallback(async () => {
-    if (inflight.current) return;
-    inflight.current = true;
-    setLoading(true);
-    try {
-      const res = await fetch('/api/links', { cache: 'no-store' });
-      const data: LinksSnapshot = await res.json();
-      setSnap(data);
-    } catch (e) {
-      setSnap((prev) =>
-        prev
-          ? { ...prev, lastError: (e as Error).message, status: 'error' }
-          : {
-              status: 'error',
-              data: null,
-              lastError: (e as Error).message,
-              lastAttemptAt: null,
-              lastSuccessAt: null,
-              nextRefreshAt: null,
-            },
-      );
-    } finally {
-      inflight.current = false;
-      setLoading(false);
-    }
-  }, []);
-
-  const refresh = useCallback(async () => {
-    if (inflight.current) return;
-    inflight.current = true;
-    setLoading(true);
-    try {
-      const res = await fetch('/api/links/refresh', { method: 'POST' });
-      const data: LinksSnapshot = await res.json();
-      setSnap(data);
-    } catch (e) {
-      setSnap((prev) =>
-        prev ? { ...prev, lastError: (e as Error).message } : prev,
-      );
-    } finally {
-      inflight.current = false;
-      setLoading(false);
-    }
-  }, []);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    void load();
-    const t = window.setInterval(load, 15000);
-    return () => window.clearInterval(t);
-  }, [load]);
+    let active = true;
 
-  return { snap, loading, refresh };
+    void (async () => {
+      try {
+        const res = await fetch('/api/links', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`请求失败 (${res.status})`);
+        const data: LinksSnapshot = await res.json();
+        if (active) setSnap(data);
+      } catch (e) {
+        if (!active) return;
+        setSnap({
+          status: 'error',
+          data: null,
+          lastError: (e as Error).message,
+          lastAttemptAt: null,
+          lastSuccessAt: null,
+          nextRefreshAt: null,
+        });
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return { snap, loading };
 }
 
 /* ==================== 工具函数 ==================== */
@@ -181,8 +157,6 @@ function Header() {
 
 interface StatusPillProps {
   snap: LinksSnapshot | null;
-  loading: boolean;
-  onRefresh: () => void;
 }
 
 function fmtClock(iso: string | null): string {
@@ -194,29 +168,45 @@ function fmtClock(iso: string | null): string {
   return `${hh}:${mm}`;
 }
 
-function StatusPill({ snap, loading, onRefresh }: StatusPillProps) {
+function fmtLocalDateTime(value: string): string {
+  if (!value) return '—';
+
+  const gmt = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(
+    value,
+  );
+  const date = gmt
+    ? new Date(
+        Date.UTC(
+          Number(gmt[1]),
+          Number(gmt[2]) - 1,
+          Number(gmt[3]),
+          Number(gmt[4]),
+          Number(gmt[5]),
+          Number(gmt[6]),
+        ),
+      )
+    : new Date(value);
+
+  if (!Number.isFinite(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZoneName: 'short',
+  }).format(date);
+}
+
+function StatusPill({ snap }: StatusPillProps) {
   const clock = fmtClock(snap?.lastSuccessAt ?? null);
 
   return (
-    <div className={`status-pill${loading ? ' status-fetching' : ''}`}>
+    <div className="status-pill">
       <span className="status-label">上次同步时间:{clock}</span>
-      <button
-        className="refresh-btn"
-        onClick={onRefresh}
-        aria-label="立即刷新"
-        disabled={loading}
-      >
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
-          <path
-            d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 3v3h-3"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </svg>
-      </button>
     </div>
   );
 }
@@ -224,17 +214,13 @@ function StatusPill({ snap, loading, onRefresh }: StatusPillProps) {
 function Hero({
   version,
   snap,
-  loading,
-  onRefresh,
 }: {
   version: string;
   snap: LinksSnapshot | null;
-  loading: boolean;
-  onRefresh: () => void;
 }) {
   return (
     <section className="hero">
-      <StatusPill snap={snap} loading={loading} onRefresh={onRefresh} />
+      <StatusPill snap={snap} />
 
       <h1 className="hero-title">
         Codex <span className="accent">桌面版</span>
@@ -311,7 +297,9 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
           </code>
         </MetaRow>
         <MetaRow label="有效期">
-          <span className="mono">{file?.expire || '—'}</span>
+          <span className="mono" title={file?.expire}>
+            {file ? fmtLocalDateTime(file.expire) : '—'}
+          </span>
         </MetaRow>
       </div>
 
@@ -434,7 +422,7 @@ function Footer({ snap }: { snap: LinksSnapshot | null }) {
         </a>
       </span>
       <span className="dot" aria-hidden />
-      <span>每 10 分钟自动同步(含 0–60 秒随机抖动)</span>
+      <span>每 10 分钟自动同步</span>
     </footer>
   );
 }
@@ -442,7 +430,7 @@ function Footer({ snap }: { snap: LinksSnapshot | null }) {
 /* ==================== 应用 ==================== */
 
 function App() {
-  const { snap, loading, refresh } = useLinks();
+  const { snap, loading } = useLinks();
 
   const version = useMemo(() => {
     const f = snap?.data?.x64 || snap?.data?.arm64;
@@ -456,12 +444,7 @@ function App() {
     <div className="app">
       <Header />
       <main className="main">
-        <Hero
-          version={version}
-          snap={snap}
-          loading={loading}
-          onRefresh={refresh}
-        />
+        <Hero version={version} snap={snap} />
 
         {softError && snap?.lastError && (
           <ErrorBanner message={snap.lastError} />
@@ -484,11 +467,8 @@ function App() {
           <div className="empty-state">
             <div className="empty-title">暂时拿不到下载链接</div>
             <div className="empty-desc">
-              {snap.lastError || '请稍后重试,或点击右上角立即刷新。'}
+              {snap.lastError || '请等待下一次定时同步后刷新页面。'}
             </div>
-            <button className="btn btn-primary" onClick={refresh}>
-              重试
-            </button>
           </div>
         )}
       </main>
