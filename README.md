@@ -25,7 +25,6 @@ codex-downloads/
 ├── worker-cron/                # 独立的 Cron Worker
 │   ├── src/index.ts            # scheduled handler:抓 + 写 KV
 │   └── wrangler.toml           # cron: */10 * * * *
-├── package.json                # 根目录:wrangler + workers-types
 └── .gitignore
 ```
 
@@ -156,18 +155,30 @@ curl -X POST https://codex-downloads-cron.<你的账号>.workers.dev/tick
 
 # 本地开发
 
+需要先本地全局装一个 wrangler:
+
 ```bash
-# 一次装好三处依赖
-npm run install:all
+npm i -g wrangler
+```
 
-# 终端 1:启动 wrangler pages dev,提供 /api/* 和一个本地 KV
-npm run dev:pages
+装好后:
 
-# 终端 2:启动 Vite 前端,自动把 /api 代理到 8788
-npm run dev:web
+```bash
+# 前端依赖
+cd web && npm install && cd ..
+
+# 终端 1:wrangler pages dev,提供 /api/* + 本地 KV(先 build 一次前端)
+cd web && npm run build && cd ..
+npx wrangler pages dev web/dist \
+  --compatibility-date=2025-01-01 \
+  --kv CODEX_LINKS \
+  --port 8788
+
+# 终端 2:启动 Vite 前端(自动把 /api 代理到 8788)
+cd web && npm run dev
 
 # (可选)终端 3:本地跑 cron worker
-npm run dev:cron
+cd worker-cron && npm install && npm run dev
 ```
 
 浏览器打开 <http://127.0.0.1:3000/> 即可。
