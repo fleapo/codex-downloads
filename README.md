@@ -46,7 +46,7 @@ codex-downloads/
 
 ### 1. 推送到 GitHub
 
-把仓库推送到 GitHub 的 `main` 分支。仓库中不需要填写 Cloudflare Account ID、API Token
+把仓库推送到 GitHub 的 `master` 分支。仓库中不需要填写 Cloudflare Account ID、API Token
 或 KV Namespace ID。
 
 ### 2. 创建 Worker 并连接仓库
@@ -58,7 +58,7 @@ codex-downloads/
 
 | 配置项 | 值 |
 | --- | --- |
-| Production branch | `main` |
+| Production branch | `master` |
 | Root directory | 留空 |
 | Build command | `npm run build` |
 | Deploy command | `npx wrangler deploy` |
@@ -88,7 +88,7 @@ Secrets。
 - `CODEX_LINKS` KV binding
 - `*/10 * * * *` Cron Trigger
 
-以后只需 push 到 `main`，Cloudflare 会自动构建和部署，不再需要修改其他配置。
+以后只需 push 到 `master`，Cloudflare 会自动构建和部署，不再需要修改其他配置。
 
 ## 验证部署
 
