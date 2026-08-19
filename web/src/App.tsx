@@ -11,6 +11,7 @@ interface CodexFile {
   sha1: string;
   expire: string;
   url: string;
+  sourceUrl?: string;
 }
 
 interface CodexLinks {
@@ -94,6 +95,10 @@ async function copyText(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function absoluteUrl(value: string): string {
+  return new URL(value, window.location.origin).href;
 }
 
 /* ==================== 组件 ==================== */
@@ -246,25 +251,29 @@ interface DownloadCardProps {
 }
 
 function DownloadCard({ arch, file, loading }: DownloadCardProps) {
-  const [copied, setCopied] = useState(false);
-  const [pressed, setPressed] = useState(false);
+  const [copied, setCopied] = useState<'mirror' | 'source' | null>(null);
+  const [pressed, setPressed] = useState<'mirror' | 'source' | null>(null);
 
   const meta = ARCH_META[arch];
   const disabled = !file;
 
-  const onCopy = useCallback(async () => {
+  const onCopy = useCallback(async (target: 'mirror' | 'source') => {
     if (!file) return;
-    const ok = await copyText(file.url);
+    const value = target === 'mirror' ? file.url : file.sourceUrl;
+    if (!value) return;
+    const ok = await copyText(absoluteUrl(value));
     if (!ok) return;
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    setCopied(target);
+    window.setTimeout(() => setCopied(null), 1600);
   }, [file]);
 
-  const onDownload = useCallback(() => {
+  const onDownload = useCallback((target: 'mirror' | 'source') => {
     if (!file) return;
-    setPressed(true);
-    window.setTimeout(() => setPressed(false), 500);
-    window.location.href = file.url;
+    const value = target === 'mirror' ? file.url : file.sourceUrl;
+    if (!value) return;
+    setPressed(target);
+    window.setTimeout(() => setPressed(null), 500);
+    window.location.href = value;
   }, [file]);
 
   return (
@@ -296,7 +305,7 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
             {file?.sha1 || '—'}
           </code>
         </MetaRow>
-        <MetaRow label="有效期">
+        <MetaRow label="源链接到期">
           <span className="mono" title={file?.expire}>
             {file ? fmtLocalDateTime(file.expire) : '—'}
           </span>
@@ -304,64 +313,99 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
       </div>
 
       <div className="card-actions">
-        <button
-          className={`btn btn-primary${pressed ? ' btn-pressed' : ''}`}
-          disabled={disabled}
-          onClick={onDownload}
-        >
-          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden>
-            <path
-              d="M8 2v9m0 0l-3.2-3.2M8 11l3.2-3.2M3 13.5h10"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
-          <span>下载 .msix</span>
-        </button>
-        <button
-          className={`btn btn-ghost${copied ? ' btn-copied' : ''}`}
-          disabled={disabled}
-          onClick={onCopy}
-        >
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
-            {copied ? (
-              <path
-                d="M3 8.5l3 3 7-7"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            ) : (
-              <>
-                <rect
-                  x="5"
-                  y="5"
-                  width="8"
-                  height="8"
-                  rx="1.6"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  fill="none"
-                />
-                <path
-                  d="M3 10V4a1 1 0 0 1 1-1h6"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-              </>
-            )}
-          </svg>
-          <span>{copied ? '已复制' : '复制链接'}</span>
-        </button>
+        <div className="action-row">
+          <button
+            className={`btn btn-primary${pressed === 'mirror' ? ' btn-pressed' : ''}`}
+            disabled={disabled}
+            onClick={() => onDownload('mirror')}
+          >
+            <DownloadIcon />
+            <span>R2 安全下载</span>
+          </button>
+          <button
+            className={`btn btn-ghost${copied === 'mirror' ? ' btn-copied' : ''}`}
+            disabled={disabled}
+            onClick={() => void onCopy('mirror')}
+          >
+            <CopyIcon copied={copied === 'mirror'} />
+            <span>{copied === 'mirror' ? '已复制' : '复制 R2 链接'}</span>
+          </button>
+        </div>
+
+        <div className="action-row action-row-source">
+          <button
+            className={`btn btn-source${pressed === 'source' ? ' btn-pressed' : ''}`}
+            disabled={disabled || !file?.sourceUrl}
+            onClick={() => onDownload('source')}
+            title="原始 HTTP 链接可能触发浏览器安全提示"
+          >
+            <DownloadIcon />
+            <span>原始 HTTP 下载</span>
+          </button>
+          <button
+            className={`btn btn-ghost btn-source-copy${copied === 'source' ? ' btn-copied' : ''}`}
+            disabled={disabled || !file?.sourceUrl}
+            onClick={() => void onCopy('source')}
+          >
+            <CopyIcon copied={copied === 'source'} />
+            <span>{copied === 'source' ? '已复制' : '复制原始链接'}</span>
+          </button>
+        </div>
+        <div className="source-warning">原始 HTTP 链接可能被浏览器标记为不安全</div>
       </div>
     </article>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden>
+      <path
+        d="M8 2v9m0 0l-3.2-3.2M8 11l3.2-3.2M3 13.5h10"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
+function CopyIcon({ copied }: { copied: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+      {copied ? (
+        <path
+          d="M3 8.5l3 3 7-7"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      ) : (
+        <>
+          <rect
+            x="5"
+            y="5"
+            width="8"
+            height="8"
+            rx="1.6"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            fill="none"
+          />
+          <path
+            d="M3 10V4a1 1 0 0 1 1-1h6"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            fill="none"
+          />
+        </>
+      )}
+    </svg>
   );
 }
 
@@ -422,7 +466,7 @@ function Footer({ snap }: { snap: LinksSnapshot | null }) {
         </a>
       </span>
       <span className="dot" aria-hidden />
-      <span>每 10 分钟自动同步</span>
+      <span>Cloudflare R2 镜像 · 每 10 分钟自动同步</span>
     </footer>
   );
 }

@@ -17,11 +17,18 @@
     }
   ],
 
+  // 省略 bucket_name 后，首次部署会由 Wrangler 自动创建并绑定私有 R2 Bucket。
+  "r2_buckets": [
+    {
+      "binding": "CODEX_PACKAGES"
+    }
+  ],
+
   // Vite 构建产物、API 与定时任务由同一个 Worker 提供。
   "assets": {
     "directory": "./web/dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/download/*"]
   },
 
   "observability": {

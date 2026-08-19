@@ -3,6 +3,12 @@
  * 纯 fetch 实现,运行在 Cloudflare Worker 中。
  */
 
+import {
+  cleanupPackages,
+  isMirroredLinks,
+  mirrorPackages,
+} from "./r2-packages";
+
 const RG_ADGUARD_ENDPOINT = "https://store.rg-adguard.net/api/GetFiles";
 const CODEX_STORE_URL =
   "https://apps.microsoft.com/detail/9plm9xgg6vks?hl=zh-CN&gl=GB";
@@ -15,6 +21,7 @@ export interface CodexFile {
   sha1: string;
   expire: string;
   url: string;
+  sourceUrl: string;
 }
 
 export interface CodexLinks {
@@ -120,6 +127,7 @@ function parseTable(html: string): CodexFile[] {
       sha1: cells[2] || "",
       size: cells[3] || "",
       url,
+      sourceUrl: url,
     });
   }
   return files;
@@ -189,12 +197,18 @@ export function computeNextRefreshAt(now = Date.now()): string {
 /** 执行一次抓取,合并到旧快照(失败时保留旧数据),写回 KV,返回最新快照 */
 export async function refreshAndPersist(
   kv: KVLike,
+  bucket: R2Bucket,
   prev?: LinksSnapshot | null,
 ): Promise<LinksSnapshot> {
   const attemptAt = new Date().toISOString();
+  const base = prev ?? (await readSnapshot(kv));
   let snap: LinksSnapshot;
   try {
-    const data = await fetchCodexLinks();
+    const upstream = await fetchCodexLinks();
+    if (!upstream.x64 || !upstream.arm64) {
+      throw new Error("上游响应未同时包含 x64 和 arm64 安装包");
+    }
+    const data = await mirrorPackages(bucket, upstream);
     snap = {
       status: "success",
       data,
@@ -203,15 +217,29 @@ export async function refreshAndPersist(
       lastSuccessAt: data.fetchedAt,
       nextRefreshAt: computeNextRefreshAt(),
     };
+
+    // 先发布新快照，再清理两代以前的对象，避免切换期间出现下载空窗。
+    await writeSnapshot(kv, snap);
+    try {
+      await cleanupPackages(bucket, data, base?.data);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          message: "R2 package cleanup failed",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+    return snap;
   } catch (e) {
     const msg = (e as Error)?.message || String(e);
-    const base = prev ?? (await readSnapshot(kv));
+    const previousData = isMirroredLinks(base?.data) ? base.data : null;
     snap = {
-      status: base?.data ? "success" : "error",
-      data: base?.data ?? null,
+      status: previousData ? "success" : "error",
+      data: previousData,
       lastError: msg,
       lastAttemptAt: attemptAt,
-      lastSuccessAt: base?.lastSuccessAt ?? null,
+      lastSuccessAt: previousData ? base?.lastSuccessAt ?? null : null,
       nextRefreshAt: computeNextRefreshAt(),
     };
   }

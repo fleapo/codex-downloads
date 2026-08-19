@@ -3,6 +3,7 @@ import {
   refreshAndPersist,
   type LinksSnapshot,
 } from "./rg-adguard";
+import { isMirroredLinks, servePackage } from "./r2-packages";
 
 const JSON_HEADERS: HeadersInit = {
   "content-type": "application/json; charset=utf-8",
@@ -25,26 +26,32 @@ function methodNotAllowed(allowed: string): Response {
 }
 
 async function getLinks(env: Env): Promise<Response> {
-  const snapshot: LinksSnapshot =
-    (await readSnapshot(env.CODEX_LINKS)) ?? {
-      status: "error",
-      data: null,
-      lastError: "定时同步尚未生成下载链接，请等待下一次 Cron 执行后刷新页面。",
-      lastAttemptAt: null,
-      lastSuccessAt: null,
-      nextRefreshAt: null,
-    };
+  const stored = await readSnapshot(env.CODEX_LINKS);
+  if (stored && isMirroredLinks(stored.data)) return jsonResponse(stored);
+
+  const snapshot: LinksSnapshot = {
+    status: "error",
+    data: null,
+    lastError: "R2 镜像尚未生成，请等待下一次 Cron 完成后刷新页面。",
+    lastAttemptAt: stored?.lastAttemptAt ?? null,
+    lastSuccessAt: null,
+    nextRefreshAt: stored?.nextRefreshAt ?? null,
+  };
 
   return jsonResponse(snapshot);
 }
 
-async function handleApi(request: Request, env: Env): Promise<Response> {
+async function handleRequest(request: Request, env: Env): Promise<Response> {
   const { pathname } = new URL(request.url);
 
   if (pathname === "/api/links") {
     return request.method === "GET"
       ? getLinks(env)
       : methodNotAllowed("GET");
+  }
+
+  if (pathname.startsWith("/download/")) {
+    return servePackage(request, env.CODEX_PACKAGES);
   }
 
   return jsonResponse({ error: "Not Found" }, 404);
@@ -55,7 +62,11 @@ async function runScheduledRefresh(
   env: Env,
 ): Promise<void> {
   const previous = await readSnapshot(env.CODEX_LINKS);
-  const snapshot = await refreshAndPersist(env.CODEX_LINKS, previous);
+  const snapshot = await refreshAndPersist(
+    env.CODEX_LINKS,
+    env.CODEX_PACKAGES,
+    previous,
+  );
 
   console.log(
     JSON.stringify({
@@ -74,7 +85,7 @@ export default {
     const { pathname } = new URL(request.url);
 
     try {
-      return await handleApi(request, env);
+      return await handleRequest(request, env);
     } catch (error) {
       console.error(
         JSON.stringify({
