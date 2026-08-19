@@ -283,7 +283,7 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
             {file?.sha1 || '—'}
           </code>
         </MetaRow>
-        <MetaRow label="源链接到期">
+        <MetaRow label="原始链接有效期">
           <span className="mono" title={file?.expire}>
             {file ? fmtLocalDateTime(file.expire) : '—'}
           </span>
@@ -438,18 +438,6 @@ const ARCH_META: Record<
   },
 };
 
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div className="error-banner" role="alert">
-      <span className="error-icon" aria-hidden>!</span>
-      <div>
-        <div className="error-title">最近一次同步失败,展示的是上次成功的结果</div>
-        <div className="error-message">{message}</div>
-      </div>
-    </div>
-  );
-}
-
 function Footer({ snap }: { snap: LinksSnapshot | null }) {
   const clock = fmtClock(snap?.lastSuccessAt ?? null);
 
@@ -484,17 +472,12 @@ function App() {
   }, [snap]);
 
   const hasError = snap?.status === 'error' && !snap.data;
-  const softError = !!(snap?.lastError && snap?.data);
 
   return (
     <div className="app">
       <Header />
       <main className="main">
         <Hero version={version} />
-
-        {softError && snap?.lastError && (
-          <ErrorBanner message={snap.lastError} />
-        )}
 
         <section className="cards">
           <DownloadCard

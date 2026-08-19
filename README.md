@@ -35,7 +35,7 @@ Cloudflare Cron Trigger（每 10 分钟）
 - API 同时返回 HTTPS R2 地址 `url` 和 Microsoft 原始地址 `sourceUrl`
 - 页面同时提供安全/原始地址的下载与复制按钮，并在卡片下方统一说明两者差异
 - 首次 Cron 尚未完成镜像时，页面会提示等待定时同步
-- 抓取失败时保留上一次成功数据，并把错误写入快照
+- 抓取失败时保留上一次成功数据；前端不显示同步错误，错误写入快照和 Workers Logs
 - 页面显示的源链接到期时间由浏览器转换为访问者所在时区；本站 R2 下载地址不会随源链接到期
 
 将定时任务和网页合并到同一个 Worker **不会影响每 10 分钟更新**。HTTP 请求与 Cron
@@ -141,7 +141,8 @@ curl -H "Range: bytes=0-1023" \
 
 1. Worker → **Settings → Bindings** 中存在 `CODEX_LINKS` 和 `CODEX_PACKAGES`
 2. Worker → **Settings → Triggers → Cron Triggers** 中存在 `*/10 * * * *`
-3. Worker → **Observability** 中每 10 分钟出现 `scheduled refresh completed`
+3. Worker → **Observability** 中成功时出现 `scheduled refresh completed`，失败时出现
+   `scheduled refresh failed`，并可在 `lastError` 中查看具体原因
 4. R2 Bucket 的 `packages/` 目录中存在 x64 和 arm64 对象
 
 Cron 配置更新可能需要短暂时间传播。新 R2 Bucket 在第一次 Cron 完成前没有安装包，这是

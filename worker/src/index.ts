@@ -68,16 +68,22 @@ async function runScheduledRefresh(
     previous,
   );
 
-  console.log(
-    JSON.stringify({
-      message: "scheduled refresh completed",
-      cron: controller.cron,
-      scheduledTime: controller.scheduledTime,
-      status: snapshot.status,
-      lastError: snapshot.lastError,
-      lastSuccessAt: snapshot.lastSuccessAt,
-    }),
-  );
+  const log = {
+    message: snapshot.lastError
+      ? "scheduled refresh failed"
+      : "scheduled refresh completed",
+    cron: controller.cron,
+    scheduledTime: controller.scheduledTime,
+    status: snapshot.status,
+    lastError: snapshot.lastError,
+    lastSuccessAt: snapshot.lastSuccessAt,
+  };
+
+  if (snapshot.lastError) {
+    console.error(JSON.stringify(log));
+  } else {
+    console.log(JSON.stringify(log));
+  }
 }
 
 export default {
