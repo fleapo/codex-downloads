@@ -8,10 +8,11 @@
   ],
   "scripts": {
     "build": "npm run build --workspace web",
-    "check": "npm run check:worker && npm run build",
+    "check": "npm test && npm run check:worker && npm run build",
     "check:worker": "tsc -p worker/tsconfig.json",
     "deploy": "npm run build && wrangler deploy",
     "dev": "npm run build && wrangler dev --port 8788",
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
     "types": "wrangler types --include-runtime false"
   },
   "devDependencies": {

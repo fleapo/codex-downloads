@@ -43,9 +43,7 @@ function useLinks(): {
 
     void (async () => {
       try {
-        const res = await fetch('/api/links', { cache: 'no-store' });
-        if (!res.ok) throw new Error(`请求失败 (${res.status})`);
-        const data: LinksSnapshot = await res.json();
+        const data = await fetchLinksSnapshot();
         if (active) setSnap(data);
       } catch (e) {
         if (!active) return;
@@ -71,6 +69,12 @@ function useLinks(): {
 }
 
 /* ==================== 工具函数 ==================== */
+
+async function fetchLinksSnapshot(): Promise<LinksSnapshot> {
+  const res = await fetch('/api/links', { cache: 'no-store' });
+  if (!res.ok) throw new Error(`请求失败 (${res.status})`);
+  return res.json() as Promise<LinksSnapshot>;
+}
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -201,24 +205,36 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
   const meta = ARCH_META[arch];
   const disabled = !file;
 
+  const latestFile = useCallback(async (): Promise<CodexFile | null> => {
+    try {
+      const latest = await fetchLinksSnapshot();
+      return latest.data?.[arch] ?? file;
+    } catch {
+      // 短暂网络故障时仍允许使用页面上最后一次成功获取的链接。
+      return file;
+    }
+  }, [arch, file]);
+
   const onCopy = useCallback(async (target: 'mirror' | 'source') => {
-    if (!file) return;
-    const value = target === 'mirror' ? file.url : file.sourceUrl;
+    const currentFile = await latestFile();
+    if (!currentFile) return;
+    const value = target === 'mirror' ? currentFile.url : currentFile.sourceUrl;
     if (!value) return;
     const ok = await copyText(absoluteUrl(value));
     if (!ok) return;
     setCopied(target);
     window.setTimeout(() => setCopied(null), 1600);
-  }, [file]);
+  }, [latestFile]);
 
-  const onDownload = useCallback((target: 'mirror' | 'source') => {
-    if (!file) return;
-    const value = target === 'mirror' ? file.url : file.sourceUrl;
+  const onDownload = useCallback(async (target: 'mirror' | 'source') => {
+    const currentFile = await latestFile();
+    if (!currentFile) return;
+    const value = target === 'mirror' ? currentFile.url : currentFile.sourceUrl;
     if (!value) return;
     setPressed(target);
     window.setTimeout(() => setPressed(null), 500);
     window.location.href = value;
-  }, [file]);
+  }, [latestFile]);
 
   return (
     <article
@@ -256,7 +272,7 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
           <button
             className={`btn btn-primary${pressed === 'mirror' ? ' btn-pressed' : ''}`}
             disabled={disabled}
-            onClick={() => onDownload('mirror')}
+            onClick={() => void onDownload('mirror')}
           >
             <DownloadIcon />
             <span>安全下载</span>
@@ -275,7 +291,7 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
           <button
             className={`btn btn-source${pressed === 'source' ? ' btn-pressed' : ''}`}
             disabled={disabled || !file?.sourceUrl}
-            onClick={() => onDownload('source')}
+            onClick={() => void onDownload('source')}
             title="原始 HTTP 链接可能触发浏览器安全提示"
           >
             <DownloadIcon />

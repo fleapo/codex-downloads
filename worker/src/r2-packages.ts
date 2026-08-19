@@ -161,7 +161,7 @@ function responseHeaders(object: R2Object, fileName: string): Headers {
   return headers;
 }
 
-function applyRangeHeaders(
+export function applyRangeHeaders(
   headers: Headers,
   range: R2Range,
   totalSize: number,
@@ -169,12 +169,18 @@ function applyRangeHeaders(
   let offset: number;
   let length: number;
 
-  if ("suffix" in range) {
-    length = Math.min(range.suffix, totalSize);
+  const suffix = "suffix" in range ? range.suffix : undefined;
+  if (typeof suffix === "number") {
+    length = Math.min(suffix, totalSize);
     offset = totalSize - length;
   } else {
-    offset = range.offset ?? 0;
-    length = Math.min(range.length ?? totalSize - offset, totalSize - offset);
+    const rangeOffset = "offset" in range ? range.offset : undefined;
+    const rangeLength = "length" in range ? range.length : undefined;
+    offset = typeof rangeOffset === "number" ? rangeOffset : 0;
+    length = Math.min(
+      typeof rangeLength === "number" ? rangeLength : totalSize - offset,
+      totalSize - offset,
+    );
   }
 
   headers.set("content-length", String(length));

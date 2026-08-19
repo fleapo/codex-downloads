@@ -33,7 +33,11 @@ Cloudflare Cron Trigger（每 10 分钟）
 - R2 object key 为 `packages/<sha1>.msix`，下载支持 `GET`、`HEAD` 和 Range 断点续传
 - 自动保留当前和上一版本两代对象，清理更旧的对象
 - API 同时返回 HTTPS R2 地址 `url` 和 Microsoft 原始地址 `sourceUrl`
-- 页面同时提供安全/原始地址的下载与复制按钮，并在卡片下方统一说明两者差异
+- 页面同时提供安全/原始地址的下载与复制按钮；每次点击都会读取最新快照，读取失败时
+  回退到页面上最后一次成功获取的链接
+- R2 对象按 SHA-1 使用不可变地址；发布新版本时保留上一版，因此版本切换不会中断刚开始的
+  下载或立即使旧页面失效
+- 页面在卡片下方统一说明安全地址与原始地址的差异
 - 首次 Cron 尚未完成镜像时，页面会提示等待定时同步
 - 抓取失败时保留上一次成功数据；前端不显示同步错误，错误写入快照和 Workers Logs
 - 本站安全下载地址不会随 Microsoft 原始临时链接到期
@@ -51,6 +55,7 @@ codex-downloads/
 │   ├── src/rg-adguard.ts        # 抓取、解析和 KV 快照逻辑
 │   ├── src/r2-packages.ts       # R2 镜像、清理和 Range 下载逻辑
 │   └── tsconfig.json
+├── test/                         # Range 与 R2 清理策略回归测试
 ├── wrangler.jsonc               # 静态资源、Cron、KV、R2 与可观测性配置
 ├── worker-configuration.d.ts    # Wrangler 根据配置生成的 Env 类型
 ├── package.json
