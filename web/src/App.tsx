@@ -9,7 +9,6 @@ interface CodexFile {
   arch: 'x64' | 'arm64';
   size: string;
   sha1: string;
-  expire: string;
   url: string;
   sourceUrl?: string;
 }
@@ -169,39 +168,6 @@ function fmtClock(iso: string | null): string {
   return `${hh}:${mm}`;
 }
 
-function fmtLocalDateTime(value: string): string {
-  if (!value) return '—';
-
-  const gmt = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(
-    value,
-  );
-  const date = gmt
-    ? new Date(
-        Date.UTC(
-          Number(gmt[1]),
-          Number(gmt[2]) - 1,
-          Number(gmt[3]),
-          Number(gmt[4]),
-          Number(gmt[5]),
-          Number(gmt[6]),
-        ),
-      )
-    : new Date(value);
-
-  if (!Number.isFinite(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    timeZoneName: 'short',
-  }).format(date);
-}
-
 function Hero({ version }: { version: string }) {
   return (
     <section className="hero">
@@ -270,7 +236,7 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
       </header>
 
       <div className="card-meta">
-        <MetaRow label="文件">
+        <MetaRow label="文件名">
           <code className="mono ellipsis" title={file?.fileName}>
             {file?.fileName || '—'}
           </code>
@@ -282,11 +248,6 @@ function DownloadCard({ arch, file, loading }: DownloadCardProps) {
           <code className="mono ellipsis" title={file?.sha1}>
             {file?.sha1 || '—'}
           </code>
-        </MetaRow>
-        <MetaRow label="原始链接有效期">
-          <span className="mono" title={file?.expire}>
-            {file ? fmtLocalDateTime(file.expire) : '—'}
-          </span>
         </MetaRow>
       </div>
 
