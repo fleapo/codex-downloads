@@ -169,7 +169,7 @@ function fmtClock(iso: string | null): string {
   if (!Number.isFinite(d.getTime())) return '—';
   const hh = d.getHours().toString().padStart(2, '0');
   const mm = d.getMinutes().toString().padStart(2, '0');
-  return `${hh}:${mm}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hh}:${mm}`;
 }
 
 function Hero({ version }: { version: string }) {
