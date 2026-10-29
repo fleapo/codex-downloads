@@ -103,7 +103,7 @@ function parseTable(html: string): CodexFile[] {
     const linkMatch = linkRegex.exec(rowInner);
     if (!linkMatch) continue;
 
-    const url = (linkMatch[1] || linkMatch[2] || "").trim();
+    const url = stripTags(linkMatch[1] || linkMatch[2] || "");
     const fileName = stripTags(linkMatch[3]).trim();
     if (!/\.msix$/i.test(fileName)) continue;
 
